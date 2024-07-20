@@ -1,8 +1,14 @@
+import os
+import tkinter as tk
+from tkinter import filedialog, messagebox
+import pandas as pd
 import requests
 from bs4 import BeautifulSoup
-import pandas as pd
 from unidecode import unidecode
+import sys
+import threading
 
+# Các hàm từ mã hiện có của bạn được đặt ở đây
 def parse_date(date_str):
     date_formats = ['%d-%m-%Y', '%d/%m/%Y', '%Y-%m-%d', '%Y/%m/%d', '%m/%d/%Y']
     for fmt in date_formats:
@@ -48,7 +54,7 @@ def extract_data(ho_va_ten, ngay_thang_nam_sinh, ngay_thi, max_attempts=27):
             if response.status_code == 200:
                 response_data = response.json()
                 user_display_name = response_data.get('UserDisplayName')
-                print(f"Tìm thấy tài khoản:{user_display_name}")
+                print(f"Tìm thấy tài khoản: {user_display_name}")
                 session_id = response_data.get('PortalUserSessionID')
                 name, dob = user_display_name.rsplit(' ', 1)
                 dob_api = pd.to_datetime(dob, format='%d%b%Y')
@@ -202,4 +208,58 @@ def process_excel(input_file, output_file):
         results_df.to_excel(writer, sheet_name='Kết quả thi', index=False)
         print(f"Kết quả đã được lưu vào tệp '{output_file}'.")
 
-process_excel('input.xlsx', 'ket_qua_thi.xlsx')
+# Giao diện GUI
+class PrintLogger:
+    def __init__(self, textbox):
+        self.textbox = textbox
+
+    def write(self, text):
+        self.textbox.insert(tk.END, text)
+        self.textbox.see(tk.END)
+
+    def flush(self):
+        pass
+
+def browse_input_file():
+    filename = filedialog.askopenfilename(filetypes=[("Excel files", "*.xlsx")])
+    if filename:
+        input_entry.delete(0, tk.END)
+        input_entry.insert(0, filename)
+
+def start_processing():
+    input_file = input_entry.get()
+    
+    if not input_file:
+        messagebox.showerror("Lỗi", "Vui lòng chọn tệp đầu vào.")
+        return
+    
+    input_directory = os.path.dirname(input_file)
+    output_file = os.path.join(input_directory, 'ket_qua_thi.xlsx')
+    
+    threading.Thread(target=process_excel, args=(input_file, output_file)).start()
+
+app = tk.Tk()
+app.title("Xử lý kết quả thi")
+app.geometry("700x400")
+
+# Các thành phần giao diện
+tk.Label(app, text="Tệp đầu vào:").grid(row=0, column=0, padx=10, pady=10)
+input_entry = tk.Entry(app, width=40)
+input_entry.grid(row=0, column=1, padx=10, pady=10)
+tk.Button(app, text="Chọn tệp...", command=browse_input_file).grid(row=0, column=2, padx=10, pady=10)
+
+tk.Button(app, text="Bắt đầu xử lý", command=start_processing).grid(row=1, column=1, padx=10, pady=20)
+
+# Thêm Text widget để hiển thị quá trình xử lý
+text_frame = tk.Frame(app)
+text_frame.grid(row=2, column=0, columnspan=3, padx=10, pady=10)
+text = tk.Text(text_frame, wrap='word', height=10, width=80)
+text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+scroll = tk.Scrollbar(text_frame, command=text.yview)
+scroll.pack(side=tk.RIGHT, fill=tk.Y)
+text.config(yscrollcommand=scroll.set)
+
+# Chuyển hướng output của print vào Text widget
+sys.stdout = PrintLogger(text)
+
+app.mainloop()
